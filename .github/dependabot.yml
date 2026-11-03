@@ -1,11 +1,28 @@
+# Grouped minor and patch updates once a month. Major upgrades (a new Spring Boot or
+# Angular major) need code changes, so they are done by hand rather than by a bot PR.
 version: 2
 updates:
   - package-ecosystem: maven
     directory: "/"
     schedule: { interval: monthly }
+    groups:
+      maven:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: "/frontend"
     schedule: { interval: monthly }
+    groups:
+      npm:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule: { interval: monthly }
+    groups:
+      actions:
+        patterns: ["*"]
