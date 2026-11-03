@@ -1,0 +1,66 @@
+text,group,kind,active
+Backend Engineer,Include – backend,INCLUDE,true
+Backend Developer,Include – backend,INCLUDE,true
+Backend-Entwickler,Include – backend,INCLUDE,true
+Java Developer,Include – backend,INCLUDE,true
+Python Developer,Include – backend,INCLUDE,true
+Go Developer,Include – backend,INCLUDE,true
+Node.js Developer,Include – backend,INCLUDE,true
+.NET Developer,Include – backend,INCLUDE,true
+Frontend Engineer,Include – frontend,INCLUDE,true
+Frontend Developer,Include – frontend,INCLUDE,true
+Frontend-Entwickler,Include – frontend,INCLUDE,true
+React Developer,Include – frontend,INCLUDE,true
+Angular Developer,Include – frontend,INCLUDE,true
+Full Stack,Include – general,INCLUDE,true
+Fullstack,Include – general,INCLUDE,true
+Softwareentwickler,Include – general,INCLUDE,true
+Software Engineer,Include – general,INCLUDE,true
+Software Developer,Include – general,INCLUDE,true
+iOS Developer,Include – mobile,INCLUDE,true
+Android Developer,Include – mobile,INCLUDE,true
+Mobile Engineer,Include – mobile,INCLUDE,true
+Flutter,Include – mobile,INCLUDE,true
+Data Engineer,Include – data & AI,INCLUDE,true
+Machine Learning Engineer,Include – data & AI,INCLUDE,true
+ML Engineer,Include – data & AI,INCLUDE,true
+AI Engineer,Include – data & AI,INCLUDE,true
+KI-Entwickler,Include – data & AI,INCLUDE,true
+LLM Engineer,Include – data & AI,INCLUDE,true
+DevOps Engineer,Include – platform,INCLUDE,true
+Platform Engineer,Include – platform,INCLUDE,true
+Cloud Engineer,Include – platform,INCLUDE,true
+Site Reliability Engineer,Include – platform,INCLUDE,true
+SRE,Include – platform,INCLUDE,true
+QA Engineer,Include – quality,INCLUDE,true
+Test Automation,Include – quality,INCLUDE,true
+SDET,Include – quality,INCLUDE,true
+Junior,Seniority keep,KEEP,true
+Mid,Seniority keep,KEEP,true
+Professional,Seniority keep,KEEP,true
+Software Engineer II,Seniority keep,KEEP,true
+2-3 years,Seniority keep,KEEP,true
+2+ Jahre,Seniority keep,KEEP,true
+Staff,Seniority drop,DOWNRANK,true
+Principal,Seniority drop,DOWNRANK,true
+Lead,Seniority drop,DOWNRANK,true
+Head of,Seniority drop,DOWNRANK,true
+Architect,Seniority drop,DOWNRANK,true
+7+ years,Seniority drop,DOWNRANK,true
+8+ Jahre,Seniority drop,DOWNRANK,true
+Werkstudent,Type drop,DROP,true
+Praktikum,Type drop,DROP,true
+Internship,Type drop,DROP,true
+Ausbildung,Type drop,DROP,true
+Duales Studium,Type drop,DROP,true
+Minijob,Type drop,DROP,true
+Freelance,Type drop,DROP,true
+verhandlungssicheres Deutsch,Language flag,FLAG_LANGUAGE,true
+fließend Deutsch,Language flag,FLAG_LANGUAGE,true
+Deutsch C1,Language flag,FLAG_LANGUAGE,true
+Deutsch C2,Language flag,FLAG_LANGUAGE,true
+native German,Language flag,FLAG_LANGUAGE,true
+Zeitarbeit,Agency flag,FLAG_AGENCY,true
+Arbeitnehmerüberlassung,Agency flag,FLAG_AGENCY,true
+im Auftrag unseres Kunden,Agency flag,FLAG_AGENCY,true
+Personalvermittlung,Agency flag,FLAG_AGENCY,true

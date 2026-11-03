@@ -1,0 +1,107 @@
+# Defaults for everyone. Do not put personal settings here: copy
+# config/application-local.example.yml to config/application-local.yml (git-ignored)
+# and override only what you need. Spring loads it on top of this file.
+spring:
+  application:
+    name: job-radar
+  config:
+    # Secrets (OPENROUTER_API_KEY, GMAIL_CLIENT_ID, IMAP_PASSWORD, ...) from a git-ignored
+    # .env in the project root, then your personal overrides.
+    import:
+      - "optional:file:./.env[.properties]"
+      - "optional:file:./config/application-local.yml"
+  datasource:
+    url: jdbc:postgresql://localhost:5433/jobradar
+    username: jobradar
+    password: jobradar
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: 8090
+
+jobradar:
+  # Sent in the User-Agent so a site operator can reach you. Set it in your local config.
+  contact-email: ""
+  per-host-rps: 1
+  close-after-missing-runs: 2
+  repost-window-days: 90
+  # Where companies.csv and search_terms.csv are read from on every start.
+  seed-dir: "seed"
+  # Your CV as YAML (format: config/profile.example.yaml). Only used by AI scoring.
+  profile-path: "config/profile.yaml"
+  # Optional: a folder of CV-<company>-<yyyy>-<mm>-<dd> directories written by a CV
+  # generator, imported as application history. Empty turns the import off.
+  cv-output-dir: ""
+
+  # Which jobs you see. Everything a filter drops is kept and shown behind the
+  # "stretch roles" switch, never deleted. See docs/CONFIGURATION.md.
+  filters:
+    max-years-required: 0          # drop postings asking for more years; 0 = no limit
+    max-german-level: NATIVE       # NONE, A1, A2, B1, B2, C1, C2 or NATIVE (= no limit)
+    drop-senior-titles: true       # Staff, Principal, Head of, Architect, ...
+    include-student-roles: false   # Werkstudent, internships, Ausbildung
+    include-graduate-programmes: true
+    # title-must-match / title-exclude / senior-titles default to a software-engineering
+    # search; override them to search another field.
+    boosts: []                     # e.g. [{pattern: "\\bjava\\b", points: 20}]
+  ba:
+    # Deliberately short: BA matches loosely and every extra term multiplies the noise.
+    queries:
+      - "Softwareentwickler"
+      - "Software Engineer"
+      - "Backend Entwickler"
+      - "Frontend Entwickler"
+    max-detail-fetches: 250
+  stepstone:
+    # One page (25 postings) per keyword - robots.txt disallows ?page=, so breadth comes
+    # from specific keywords, not from paging. Slugs as in stepstone.de/jobs/<slug>.
+    keywords:
+      - "softwareentwickler"
+      - "software-engineer"
+      - "backend-entwickler"
+      - "frontend-entwickler"
+    max-detail-fetches: 120
+  detect:
+    # Companies probed for an ATS before each full scan; each probe is ~20 small requests.
+    per-scan: 30
+    retry-days: 30
+  mail:
+    # Which route to read replies with: gmail (OAuth, the Gmail API) or imap.
+    provider: gmail
+  # IMAP stays available as a fallback: no Google Cloud project and no token expiry,
+  # but it needs an app password rather than the account password.
+  imap:
+    host: imap.gmail.com
+    port: 993
+    user: ${IMAP_USER:}
+    password: ${IMAP_PASSWORD:}
+    folder: INBOX
+  gmail:
+    # Create a Google Cloud OAuth client (Desktop or Web) and put the two values in .env.
+    # Scope is read-only; the consent happens in your own browser.
+    client-id: ${GMAIL_CLIENT_ID:}
+    client-secret: ${GMAIL_CLIENT_SECRET:}
+    redirect-uri: "http://localhost:8090/api/v1/gmail/callback"
+  llm:
+    model: "deepseek/deepseek-v4-flash"
+    # A .env file holding OPENROUTER_API_KEY=..., read when the variable is not set.
+    env-file: ".env"
+    api-key: ${OPENROUTER_API_KEY:}
+    # Off by default: jobs still go through the free rule filters (title, years, German
+    # level) and get a rule-based score, and no OpenRouter call is made. Set true, add an
+    # API key and a profile, and each new job also gets an AI fit and chance score.
+    scoring-enabled: false
+    # One line describing the jobs you want, added to the scoring instructions.
+    ideal-match: ""
+    budget-per-run: 1.00
+    # Checked before spending, unlike budget-per-run: after a 5-job sample the run's total is
+    # projected from the real cost, and above this nothing more is scored that run.
+    max-estimated-cost: 0.50
+
+logging:
+  level:
+    com.jobradar: INFO

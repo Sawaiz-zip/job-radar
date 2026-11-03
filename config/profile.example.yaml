@@ -1,0 +1,25 @@
+# Your CV as data, read only by the optional AI scoring (jobradar.llm.scoring-enabled).
+# Copy to config/profile.yaml (git-ignored) and replace everything. Only these keys are read.
+tailoring:
+  primary_identity: "Backend engineer (Python, Go) with two years of production experience"
+
+summary_seed: >-
+  Builds and runs REST services and data pipelines; comfortable with Docker, Kubernetes
+  and PostgreSQL; looking for a backend or platform role in Germany.
+
+employment:
+  - title: "Software Engineer"
+    company: "Example GmbH"
+    start_date: "2024-03"
+    end_date: "present"
+
+skills:
+  - category: "Languages"
+    items: ["Go", "Python", "SQL"]
+  - category: "Infrastructure"
+    items: ["Docker", "Kubernetes", "PostgreSQL", "Kafka"]
+
+education:
+  - degree: "B.Sc. Computer Science"
+    institution: "Example University"
+    dates: "2019 - 2023"

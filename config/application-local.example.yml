@@ -1,0 +1,43 @@
+# Copy this file to config/application-local.yml and edit it. That file is git-ignored,
+# so your settings never end up in a commit. Anything you leave out keeps the default
+# from src/main/resources/application.yml. Full reference: docs/CONFIGURATION.md
+jobradar:
+  # Sent in the User-Agent header so a site operator can reach you if the scanner misbehaves.
+  contact-email: "you@example.com"
+
+  # Point this at a folder of your own to keep a personal watchlist (copy seed/ to start).
+  # seed-dir: "seed/local"
+
+  filters:
+    # Drop postings that ask for more years of experience than this (0 = no limit).
+    max-years-required: 5
+    # Drop postings that require more German than this.
+    # NONE, A1, A2, B1, B2, C1, C2, or NATIVE for no limit.
+    max-german-level: B1
+    drop-senior-titles: true
+    include-student-roles: false
+    # Titles that should sort first. Regular expressions, case-insensitive.
+    boosts:
+      - { pattern: "\\b(backend|platform)\\b", points: 20 }
+      - { pattern: "\\bjunior\\b", points: 10 }
+
+    # Searching outside software? Replace the title gate. Example for mechanical engineers:
+    # title-must-match: ["maschinenbau", "mechanical", "konstrukt", "cad", "entwicklungsingenieur"]
+    # title-exclude: ["sales", "vertrieb", "marketing", "recruiter"]
+
+  # Search words for the Bundesagentur für Arbeit and StepStone. Keep them few and specific:
+  # both match loosely, and every extra term multiplies the noise.
+  ba:
+    queries:
+      - "Softwareentwickler"
+      - "Backend Entwickler"
+  stepstone:
+    keywords:            # slugs as in stepstone.de/jobs/<slug>
+      - "softwareentwickler"
+      - "backend-entwickler"
+
+  # Optional AI scoring (off by default). Needs OPENROUTER_API_KEY and a profile.
+  # profile-path: "config/profile.yaml"
+  # llm:
+  #   scoring-enabled: true
+  #   ideal-match: "backend roles in Python or Go, junior to mid level, Berlin or remote"

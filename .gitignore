@@ -1,0 +1,24 @@
+# Build output
+target/
+*.class
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# IDEs and OS
+.idea/
+*.iml
+.vscode/
+!frontend/.vscode/
+.DS_Store
+
+# Personal data: settings, CV profile, secrets, private watchlists.
+# Keep these out of every commit; the *.example files show the format.
+.env
+config/application-local.yml
+config/profile.yaml
+seed/local/
+inbox/
+
+# Agent tooling
+.claude/

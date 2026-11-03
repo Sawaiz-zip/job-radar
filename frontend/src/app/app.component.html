@@ -1,0 +1,519 @@
+<header class="topbar">
+  <div class="brand">
+    <span class="dot"></span>
+    <h1>Job Radar</h1>
+    <span class="sub">Germany · backend · AI</span>
+  </div>
+
+  <div class="stats" *ngIf="health() as h">
+    <div class="stat"><b>{{ h.openJobs }}</b><span>open jobs</span></div>
+    <div class="stat"><b>{{ h.confirmed }}</b><span>live boards</span></div>
+    <div class="stat" [class.warn]="h.unconfirmed > 0"><b>{{ h.unconfirmed }}</b><span>to confirm</span></div>
+  </div>
+
+  <button class="scan ghostscan" (click)="scanBoards()" [disabled]="scanning()"
+          title="Search Arbeitnow, StepStone and the Bundesagentur job board">
+    Boards
+  </button>
+  <button class="scan" (click)="scan()" [disabled]="scanning()">
+    <span class="spinner" *ngIf="scanning()"></span>
+    {{ scanning() ? 'Scanning…' : 'Scan now' }}
+  </button>
+</header>
+
+<nav class="tabs">
+  <button [class.on]="tab() === 'jobs'" (click)="openTab('jobs')">Jobs</button>
+  <button [class.on]="tab() === 'applied'" (click)="openTab('applied')">
+    Applied
+    <span class="badge grey" *ngIf="health()?.applications">{{ health()?.applications }}</span>
+  </button>
+  <button [class.on]="tab() === 'companies'" (click)="openTab('companies')">Companies</button>
+  <button [class.on]="tab() === 'confirm'" (click)="openTab('confirm')">
+    Confirm boards
+    <span class="badge" *ngIf="health()?.unconfirmed">{{ health()?.unconfirmed }}</span>
+  </button>
+  <button [class.on]="tab() === 'sources'" (click)="openTab('sources')">Sources</button>
+</nav>
+
+<div class="scanresult" *ngIf="lastScan() as s">
+  Scanned {{ s.companiesScanned }} {{ s.companiesScanned === 1 ? 'company' : 'companies' }} ·
+  {{ s.jobsFound }} jobs seen · <b>{{ s.jobsCreated }} new</b><span *ngIf="s.failures"> ·
+  {{ s.failures }} sources failed</span>
+  <span *ngIf="lastScoring() as sc">
+    · scored {{ sc.scored }}, {{ sc.filteredOut }} filtered free ·
+    <b>{{ sc.costUsd | currency: 'USD':'symbol':'1.4-4' }}</b>
+    <span class="warnText" *ngIf="sc.stoppedBecause"> · {{ sc.stoppedBecause }}</span>
+  </span>
+</div>
+
+<!-- ───────────────────────── JOBS ───────────────────────── -->
+<div class="layout" *ngIf="tab() === 'jobs'">
+<aside class="sidebar">
+  <div class="side-head">
+    <span class="label">Companies</span>
+    <span class="dimsmall">{{ liveCompanies().length }} live</span>
+  </div>
+  <ul class="complist">
+    <li *ngFor="let c of liveCompanies()" (click)="filterToCompany(c)" [title]="c.name">
+      <div class="cinfo">
+        <span class="cname">{{ c.name }}</span>
+        <span class="csub">
+          <b>{{ c.open_jobs }}</b> open · {{ since(c.last_success_at) }}
+        </span>
+      </div>
+      <button class="sync" (click)="syncCompany(c, $event)" [disabled]="syncingCompany() === c.id"
+              title="Scan just this company">
+        <span class="spinner small" *ngIf="syncingCompany() === c.id"></span>
+        <span *ngIf="syncingCompany() !== c.id">↻</span>
+      </button>
+    </li>
+  </ul>
+</aside>
+
+<main class="mainpane">
+  <section class="tagbar">
+    <div class="tagbar-head">
+      <span class="label">Role tags</span>
+      <span class="dimsmall">
+        {{ activeTerms().length }} of {{ includeTerms().length }} on · a job shows if its title matches any lit tag
+        <span *ngIf="!activeTerms().length">(none lit = every title)</span>
+      </span>
+      <span class="tagactions">
+        <button class="link" (click)="setAllTags(true)">all on</button>
+        <button class="link" (click)="setAllTags(false)">all off</button>
+        <button class="link" (click)="toggleShowTags()">{{ showTags() ? 'hide tags' : 'edit single tags' }}</button>
+      </span>
+    </div>
+
+    <div class="groups">
+      <button *ngFor="let g of termGroups()" class="group"
+              [class.on]="g.on === g.terms.length" [class.part]="g.on > 0 && g.on < g.terms.length"
+              (click)="toggleGroup(g)"
+              [title]="g.on < g.terms.length ? 'Turn every ' + g.name + ' tag on' : 'Turn every ' + g.name + ' tag off'">
+        {{ g.name }} <span class="gcount">{{ g.on }}/{{ g.terms.length }}</span>
+      </button>
+    </div>
+
+    <div class="taggroups" *ngIf="showTags()">
+      <div class="taggroup" *ngFor="let g of termGroups()">
+        <span class="gname">{{ g.name }}</span>
+        <div class="chips">
+          <button *ngFor="let t of g.terms" class="chip" [class.on]="t.active" (click)="toggleTerm(t)">
+            {{ t.text }}
+            <span class="x" (click)="removeTerm(t, $event)" title="Delete this tag">×</span>
+          </button>
+        </div>
+      </div>
+      <form class="addchip" (ngSubmit)="addTerm()">
+        <input [ngModel]="newTerm()" (ngModelChange)="newTerm.set($event)" name="newTerm"
+               placeholder="+ add tag…" autocomplete="off" />
+      </form>
+    </div>
+  </section>
+
+  <section class="filterbar">
+    <div class="row">
+      <div class="searchbox">
+        <input
+          class="search"
+          [ngModel]="filters().text"
+          (ngModelChange)="setFilter('text', $event, 300)"
+          (keydown.escape)="setFilter('text', '')"
+          placeholder="Search title, company or city (e.g. java berlin), narrows the tagged list" />
+        <button class="clearx" *ngIf="filters().text" (click)="setFilter('text', '')" title="Clear">×</button>
+      </div>
+
+      <div class="seg" role="group" aria-label="Sort">
+        <button *ngFor="let s of sorts" [class.on]="filters().sort === s.key"
+                (click)="setFilter('sort', s.key)">{{ s.label }}</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="seg" role="group" aria-label="First seen">
+        <button *ngFor="let o of freshnessOptions" [class.on]="filters().freshness === o.key"
+                (click)="setFilter('freshness', o.key)" [title]="o.title">
+          {{ o.label }}
+          <span class="chipcount" *ngIf="o.key === 'scan' && lastScanInfo()?.new_in_germany">{{ lastScanInfo().new_in_germany }}</span>
+        </button>
+      </div>
+
+      <label class="switch">
+        <input type="checkbox" [ngModel]="filters().germanyOnly" (ngModelChange)="setFilter('germanyOnly', $event)" />
+        <span class="track"></span> Germany only
+      </label>
+
+      <label class="switch" title="Roles your filters dropped: too many years asked, too much German, too senior, or outside your field (see config/application-local.yml)">
+        <input type="checkbox" [ngModel]="filters().includeFiltered" (ngModelChange)="setFilter('includeFiltered', $event)" />
+        <span class="track"></span> Stretch roles
+      </label>
+
+      <button class="morebtn" [class.on]="showMore()" (click)="showMore.set(!showMore())">
+        More filters
+        <span class="chipcount" *ngIf="hiddenFilterCount() && !showMore()">{{ hiddenFilterCount() }}</span>
+        <span class="caret">{{ showMore() ? '▴' : '▾' }}</span>
+      </button>
+    </div>
+
+    <div class="more" *ngIf="showMore()">
+      <label class="field">
+        <span>City</span>
+        <input [ngModel]="filters().city" (ngModelChange)="setFilter('city', $event, 300)"
+               placeholder="Berlin, München…" list="cities" />
+        <datalist id="cities">
+          <option value="Berlin"></option><option value="München"></option><option value="Hamburg"></option>
+          <option value="Frankfurt"></option><option value="Köln"></option><option value="Stuttgart"></option>
+          <option value="Düsseldorf"></option><option value="Leipzig"></option><option value="Dresden"></option>
+          <option value="Karlsruhe"></option><option value="Nürnberg"></option><option value="Hannover"></option>
+        </datalist>
+      </label>
+
+      <label class="field">
+        <span>Source</span>
+        <select [ngModel]="filters().sourceKind" (ngModelChange)="setFilter('sourceKind', $event)">
+          <option value="">All sources</option>
+          <option value="company">Company career pages (ATS)</option>
+          <option value="board">Job boards (Arbeitnow, BA, StepStone)</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Years asked</span>
+        <select [ngModel]="filters().maxYears" (ngModelChange)="setFilter('maxYears', numberOrNull($event))">
+          <option [ngValue]="null">Any</option>
+          <option [ngValue]="2">At most 2</option>
+          <option [ngValue]="3">At most 3</option>
+          <option [ngValue]="4">At most 4</option>
+          <option [ngValue]="5">At most 5</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>German asked</span>
+        <select [ngModel]="filters().maxGerman" (ngModelChange)="setFilter('maxGerman', $event)">
+          <option value="">Any</option>
+          <option value="A2">None or A2</option>
+          <option value="B1">Up to B1</option>
+          <option value="B2">Up to B2</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Min chance</span>
+        <select [ngModel]="filters().minChance" (ngModelChange)="setFilter('minChance', +$event)">
+          <option [ngValue]="0">Any (incl. unscored)</option>
+          <option [ngValue]="40">40+</option>
+          <option [ngValue]="60">60+</option>
+          <option [ngValue]="75">75+</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Min fit</span>
+        <select [ngModel]="filters().minFit" (ngModelChange)="setFilter('minFit', +$event)">
+          <option [ngValue]="0">Any (incl. unscored)</option>
+          <option [ngValue]="40">40+</option>
+          <option [ngValue]="60">60+</option>
+          <option [ngValue]="75">75+</option>
+        </select>
+      </label>
+
+      <label class="switch">
+        <input type="checkbox" [ngModel]="filters().remoteOnly" (ngModelChange)="setFilter('remoteOnly', $event)" />
+        <span class="track"></span> Remote / hybrid
+      </label>
+
+      <label class="switch">
+        <input type="checkbox" [ngModel]="filters().hideApplied" (ngModelChange)="setFilter('hideApplied', $event)" />
+        <span class="track"></span> Hide applied
+      </label>
+    </div>
+
+    <div class="summary">
+      <span class="count">
+        <ng-container *ngIf="!(loading() && !jobs().length); else firstLoad">
+          <b>{{ total() | number }}</b> {{ total() === 1 ? 'job' : 'jobs' }}<span *ngIf="total() > jobs().length"> · showing {{ jobs().length }}</span>
+        </ng-container>
+        <ng-template #firstLoad>Loading jobs…</ng-template>
+        <span class="spinner small dark" *ngIf="loading()"></span>
+      </span>
+      <span class="pill" *ngFor="let a of activeFilters()">
+        {{ a.label }} <button (click)="resetFilter(a.key)" title="Remove this filter">×</button>
+      </span>
+      <button class="link" *ngIf="activeFilters().length" (click)="resetAllFilters()">reset filters</button>
+    </div>
+  </section>
+
+  <div class="scanresult" *ngIf="viewingCompany() as c">
+    Showing <b>every job</b> at {{ c.name }} (tags ignored, other filters still apply).
+    <button class="link" (click)="clearCompanyView()">back to matches</button>
+  </div>
+
+  <div class="scanresult warnText" *ngIf="copyError()">{{ copyError() }}</div>
+  <div class="scanresult warnText" *ngIf="jobsError()">
+    {{ jobsError() }} <button class="link" (click)="retry()">retry</button>
+  </div>
+
+  <div class="empty" *ngIf="!loading() && !jobsError() && !jobs().length">
+    No jobs match.
+    <span *ngIf="activeFilters().length"> Try <button class="link" (click)="resetAllFilters()">resetting the filters</button></span>
+    <span *ngIf="activeTerms().length < includeTerms().length"> or <button class="link" (click)="setAllTags(true)">turning every tag on</button></span>.
+  </div>
+
+  <ul class="joblist" [class.stale]="loading()">
+    <li class="job" *ngFor="let j of jobs()">
+      <div class="jobmain">
+        <div class="jobtop">
+          <span class="company">{{ j.company }}</span>
+          <span class="date" [class.fresh]="isFresh(j)">
+            {{ age(j) }}
+            <em *ngIf="!j.dateIsReported" title="This source does not report a posting date; showing when Job Radar first saw it">first seen</em>
+          </span>
+        </div>
+        <a class="title" [href]="j.applyUrl" target="_blank" rel="noopener">{{ j.title }}</a>
+        <div class="meta">
+          <span class="loc" *ngIf="j.location">{{ j.location }}</span>
+          <span class="src" *ngFor="let s of j.sources">{{ s.toLowerCase() }}</span>
+          <span class="tag years" *ngIf="j.yearsRequired">{{ j.yearsRequired }}+ yrs</span>
+          <span class="tag german" *ngIf="j.germanLevel && j.germanLevel !== 'none' && j.germanLevel !== 'unknown'">
+            German {{ j.germanLevel }}
+          </span>
+          <span class="tag filtered" *ngIf="j.matchState === 'FILTERED'">stretch</span>
+          <span class="tag repost" *ngIf="j.reposted">reposted</span>
+          <span class="tag applied" *ngIf="j.applicationStatus">{{ j.applicationStatus }}</span>
+          <span class="tag cv" *ngIf="j.cvGenerated">CV made</span>
+        </div>
+        <p class="reason" *ngIf="j.reason">{{ j.reason }}</p>
+      </div>
+
+      <div class="jobside">
+        <div class="scores" *ngIf="j.chanceScore != null || j.fitScore != null">
+          <div class="score chance" *ngIf="j.chanceScore != null">
+            <b>{{ j.chanceScore }}</b><span>chance</span>
+          </div>
+          <div class="score fit" *ngIf="j.fitScore != null">
+            <b>{{ j.fitScore }}</b><span>fit</span>
+          </div>
+        </div>
+        <div class="scores placeholder" *ngIf="j.chanceScore == null && j.fitScore == null">
+          <span class="unscored">unscored</span>
+        </div>
+        <div class="actions">
+          <a class="btn primary" [href]="j.applyUrl" target="_blank" rel="noopener">Open</a>
+          <button class="btn" (click)="copyDescription(j, $event)"
+                  title="Copy the full job description, ready to paste into Job Tailor">
+            {{ copiedJob() === j.id ? 'Copied ✓' : 'Copy JD' }}
+          </button>
+          <button class="btn" (click)="markApplied(j)">Applied</button>
+          <button class="btn ghost" (click)="dismiss(j)">Hide</button>
+        </div>
+      </div>
+    </li>
+  </ul>
+
+  <div class="loadmore" *ngIf="total() > jobs().length">
+    <button class="btn" (click)="loadMore()" [disabled]="loading()">
+      Show {{ (total() - jobs().length) < 100 ? (total() - jobs().length) : 100 }} more
+    </button>
+  </div>
+</main>
+</div>
+
+<!-- ─────────────────────── COMPANIES ─────────────────────── -->
+<main *ngIf="tab() === 'companies'">
+  <section class="controls">
+    <div class="sorts">
+      <button [class.on]="companyScope() === 'watchlist'" (click)="setCompanyScope('watchlist')"
+              title="Companies you chose to watch: your list, plus employers you have applied to">
+        My watchlist
+      </button>
+      <button [class.on]="companyScope() === 'board'" (click)="setCompanyScope('board')"
+              title="Employers a job board mentioned — usually one posting each, not watched">
+        Seen on boards
+      </button>
+      <button [class.on]="companyScope() === 'all'" (click)="setCompanyScope('all')">All</button>
+    </div>
+    <span class="count">{{ companies().length }} companies</span>
+  </section>
+
+  <table class="grid">
+    <thead>
+      <tr><th>Company</th><th>Board</th><th>Status</th><th class="num">DE</th><th class="num">All</th><th>Last scan</th><th></th></tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let c of companies()">
+        <td class="strong">
+          {{ c.name }}
+          <span class="pri" [class]="'p' + c.priority">{{ c.priority }}</span>
+        </td>
+        <td class="dim">
+          <span *ngIf="c.ats_tenant">{{ c.ats_type.toLowerCase() }}:{{ c.ats_tenant }}</span>
+          <span *ngIf="!c.ats_tenant" class="none">—</span>
+        </td>
+        <td class="dim statecell" [title]="c.state">{{ c.state }}</td>
+        <td class="num strong">{{ c.open_jobs_de }}</td>
+        <td class="num dim">{{ c.open_jobs }}</td>
+        <td class="dim">{{ c.last_success_at ? (c.last_success_at | date: 'MMM d, HH:mm') : '—' }}</td>
+        <td>
+          <button class="btn" *ngIf="c.open_jobs" (click)="showAllJobsFor(c)">Show all jobs</button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</main>
+
+<!-- ─────────────────────── SOURCES ─────────────────────── -->
+<main *ngIf="tab() === 'sources'">
+  <ng-container *ngIf="sources() as s">
+    <p class="explain" *ngIf="s.coverage as cv">
+      {{ cv.scanned_directly }} of {{ cv.companies }} companies are scanned straight from their own
+      job board. {{ cv.never_probed }} have not been checked for one yet ({{ cv.probed_no_ats }}
+      checked, none found) - each full scan checks the next batch.
+      <span *ngIf="cv.awaiting_confirmation"> {{ cv.awaiting_confirmation }} found boards wait in
+      <a href="" (click)="$event.preventDefault(); openTab('confirm')">Confirm boards</a>.</span>
+    </p>
+
+    <table class="grid">
+      <thead>
+        <tr><th>Source</th><th>Verdict</th><th class="num">Targets</th><th class="num">Failing</th>
+            <th class="num">Jobs last run</th><th class="num">New</th><th class="num">Visible now</th>
+            <th>Last run</th><th>Last error</th></tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let r of s.bySource">
+          <td class="strong">{{ r.source_type.toLowerCase() }}</td>
+          <td><span class="verdict" [class]="'v-' + r.verdict">{{ r.verdict }}</span></td>
+          <td class="num">{{ r.targets }}</td>
+          <td class="num" [class.warnText]="r.failing">{{ r.failing }}</td>
+          <td class="num">{{ r.jobs_last_run }}</td>
+          <td class="num">{{ r.new_last_run }}</td>
+          <td class="num strong">{{ r.visible_jobs }}</td>
+          <td class="dim">{{ r.last_run | date: 'MMM d, HH:mm' }}</td>
+          <td class="dim errcell" [title]="r.last_error || ''">{{ r.last_error || '—' }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 class="subhead" *ngIf="s.problems.length">Company boards with problems</h3>
+    <table class="grid" *ngIf="s.problems.length">
+      <thead>
+        <tr><th>Company</th><th>Board</th><th>Status</th><th class="num">Errors in a row</th>
+            <th>Last success</th><th>Why</th></tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let c of s.problems">
+          <td class="strong">{{ c.name }}</td>
+          <td class="dim">{{ c.ats_type.toLowerCase() }}:{{ c.ats_tenant }}</td>
+          <td><span class="verdict" [class]="'v-' + c.status">{{ c.status }}</span></td>
+          <td class="num">{{ c.consecutive_errors }}</td>
+          <td class="dim">{{ c.last_success_at ? (c.last_success_at | date: 'MMM d') : 'never' }}</td>
+          <td class="dim errcell" [title]="c.notes || c.last_error || ''">{{ c.enabled ? (c.last_error || '—') : c.notes }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </ng-container>
+</main>
+
+<!-- ──────────────────── CONFIRM BOARDS ──────────────────── -->
+<main *ngIf="tab() === 'confirm'">
+  <p class="explain">
+    These boards were found by guessing the company's slug on each ATS. A guess can land on a
+    different company with the same name, or on a demo board, so nothing here is scanned until
+    you confirm it. Open the board, check it is the right employer, then confirm or reject.
+  </p>
+  <ul class="confirmlist">
+    <li *ngFor="let c of unconfirmed()">
+      <div>
+        <b>{{ c.name }}</b>
+        <span class="dim">{{ c.ats_type.toLowerCase() }}:{{ c.ats_tenant }}</span>
+        <span class="evidence" *ngIf="c.detection_evidence">{{ c.detection_evidence }}</span>
+      </div>
+      <div class="actions">
+        <a class="btn" [href]="boardUrl(c)" target="_blank" rel="noopener">View board</a>
+        <button class="btn primary" (click)="confirmBoard(c)">That's them</button>
+        <button class="btn ghost" (click)="rejectBoard(c)">Not them</button>
+      </div>
+    </li>
+  </ul>
+  <div class="empty" *ngIf="!unconfirmed().length">Nothing waiting. Every detected board is confirmed.</div>
+</main>
+
+
+<!-- ───────────────────── APPLICATIONS ───────────────────── -->
+<main *ngIf="tab() === 'applied'">
+  <section class="gmailbar">
+    <div class="gmailinfo" *ngIf="gmail() as g">
+      <ng-container *ngIf="!g.credentialsConfigured">
+        <b>No mailbox connected.</b>
+        <span class="dim">
+          Simplest: put IMAP_USER and IMAP_PASSWORD (a Gmail app password) in .env — free, nothing
+          to set up in Google Cloud, and it never expires. The OAuth route works too; see the README.
+        </span>
+      </ng-container>
+      <ng-container *ngIf="g.credentialsConfigured && !g.connected">
+        <b>{{ g.provider }} is set up but not connected.</b>
+        <span class="dim">Statuses below cannot be read until you authorise read-only access.</span>
+      </ng-container>
+      <ng-container *ngIf="g.connected">
+        <b>{{ g.email || (g.provider + ' connected') }}</b>
+        <span class="dim">via {{ g.provider }} · last checked
+          {{ g.last_sync_at ? since(g.last_sync_at) : 'never' }}</span>
+        <span class="errText" *ngIf="g.last_error">· {{ g.last_error }}</span>
+      </ng-container>
+    </div>
+    <div class="actions">
+      <button class="btn primary" *ngIf="gmail()?.oauthConfigured && !gmail()?.connected"
+              (click)="connectGmail()">Connect Gmail</button>
+      <button class="btn" *ngIf="gmail()?.connected" (click)="syncMail()" [disabled]="syncingMail()">
+        <span class="spinner small" *ngIf="syncingMail()"></span>
+        {{ syncingMail() ? 'Checking…' : 'Check for replies' }}
+      </button>
+      <button class="btn ghost" *ngIf="gmail()?.connected" (click)="disconnectGmail()">Disconnect</button>
+    </div>
+  </section>
+
+  <div class="scanresult" *ngIf="mailSync() as m">
+    <span *ngIf="!m.error">
+      Checked {{ m.applicationsChecked }} applications · {{ m.messagesFound }} emails found ·
+      <b>{{ m.statusesUpdated }} statuses updated</b>
+      <span *ngIf="m.unclear"> · {{ m.unclear }} could not be classified</span>
+    </span>
+    <span class="warnText" *ngIf="m.error">{{ m.error }}</span>
+  </div>
+
+  <table class="grid">
+    <thead>
+      <tr><th>Company</th><th>Role</th><th>Applied</th><th>Status</th><th>What they said</th></tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let a of applications()">
+        <td class="strong">{{ a.company }}</td>
+        <td>
+          <a *ngIf="a.apply_url && a.title" [href]="a.apply_url" target="_blank" rel="noopener"
+             class="rolelink">{{ a.title }}</a>
+          <span *ngIf="a.title && !a.apply_url">{{ a.title }}</span>
+          <span *ngIf="!a.title" class="none" title="Recovered from the CV folder, which does not record the role">
+            role not recorded
+          </span>
+          <span class="tag hist" *ngIf="a.source === 'CV_HISTORY'">history</span>
+        </td>
+        <td class="dim">{{ a.applied_at ? (a.applied_at | date: 'MMM d') : '—' }}</td>
+        <td><span class="resp" [class]="statusClass(a)">{{ statusLabel(a) }}</span></td>
+        <td class="dim snippet">
+          <span *ngIf="a.response_subject" [title]="a.response_snippet">{{ a.response_subject }}</span>
+          <span *ngIf="!a.response_subject" class="none">—</span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="empty" *ngIf="!applications().length">
+    Nothing applied for yet. Generating a CV in Job Tailor records the application here.
+  </div>
+
+  <p class="explain" *ngIf="applications().length">
+    Rows marked <span class="tag hist">history</span> were rebuilt from the CV folders on disk.
+    Those folders record the company and the date but never stored the job URL or the role,
+    so the role is left blank rather than guessed at.
+  </p>
+</main>
