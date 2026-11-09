@@ -18,6 +18,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,6 +30,11 @@ import java.util.Optional;
 public class ScanService {
 
     private static final Logger log = LoggerFactory.getLogger(ScanService.class);
+
+    /** Consecutive failed detail-page fetches after which a board's details are skipped. */
+    static final int DETAIL_FAILURES_BEFORE_STOP = 5;
+    /** Upper bound on the time one board may spend fetching detail pages per scan. */
+    static final Duration DETAIL_TIME_BUDGET = Duration.ofMinutes(3);
 
     private final CompanyRepository companies;
     private final List<JobSourceAdapter> adapters;
@@ -149,15 +155,30 @@ public class ScanService {
                 continue;
             }
 
-            int created = 0, kept = 0, detailFetches = 0;
+            int created = 0, kept = 0, detailFetches = 0, failedInARow = 0;
+            String detailsStopped = null;
             for (var raw : result.jobs()) {
                 // Cheap title gate first: most board results are not engineering roles at all.
                 if (!filters.evaluate(raw.title(), raw.descriptionText()).keep()) continue;
 
                 var job = raw;
-                if (job.descriptionText() == null && detailFetches < board.maxDetailFetches()) {
+                if (detailsStopped == null && job.descriptionText() == null
+                        && detailFetches < board.maxDetailFetches()) {
                     String description = board.fetchDescription(job);
                     detailFetches++;
+                    failedInARow = description == null ? failedInARow + 1 : 0;
+                    // A board that starts stalling detail pages (bot protection answers by
+                    // holding the connection until the read timeout) would otherwise cost
+                    // 20 s per job: 120 fetches turned a 90 s step into 40 minutes. Stop
+                    // asking, keep the jobs without a description, and say so in the run.
+                    if (failedInARow >= DETAIL_FAILURES_BEFORE_STOP) {
+                        detailsStopped = failedInARow + " detail pages in a row failed";
+                    } else if (Duration.between(startedAt, Instant.now()).compareTo(DETAIL_TIME_BUDGET) > 0) {
+                        detailsStopped = "detail fetches passed the " + DETAIL_TIME_BUDGET.toMinutes() + "-minute budget";
+                    }
+                    if (detailsStopped != null) {
+                        log.warn("{}: {}; keeping the remaining jobs without descriptions", board.type(), detailsStopped);
+                    }
                     if (description != null) {
                         job = new com.jobradar.source.RawJob(job.sourceType(), job.tenant(),
                                 job.externalId(), job.title(), job.location(), description,
@@ -180,7 +201,8 @@ public class ScanService {
                 }
             }
             log.info("{}: {} results, {} kept, {} new", board.type(), result.jobs().size(), kept, created);
-            recordBoardRun(board, startedAt, null, kept, created);
+            recordBoardRun(board, startedAt,
+                    detailsStopped == null ? null : "partial: " + detailsStopped, kept, created);
             results.add(new CompanyScan(board.type().name(), board.type().name(), kept, created, null));
         }
         pruneOrphanEmployers();
