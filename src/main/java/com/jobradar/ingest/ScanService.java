@@ -34,7 +34,7 @@ public class ScanService {
     /** Consecutive failed detail-page fetches after which a board's details are skipped. */
     static final int DETAIL_FAILURES_BEFORE_STOP = 5;
     /** Upper bound on the time one board may spend fetching detail pages per scan. */
-    static final Duration DETAIL_TIME_BUDGET = Duration.ofMinutes(3);
+    static final Duration DETAIL_TIME_BUDGET = Duration.ofMinutes(6); // BA needs ~4 min for 250 healthy fetches
 
     private final CompanyRepository companies;
     private final List<JobSourceAdapter> adapters;
