@@ -46,6 +46,22 @@ public class JobUpsertService {
     }
 
     @Transactional
+    /**
+     * Whether this posting is already stored with its text. A board scan uses it to skip
+     * the detail request for jobs it already has: an existing job is only touched on
+     * upsert, so fetching its description again costs a request and changes nothing.
+     */
+    public boolean hasDescription(RawJob raw) {
+        if (raw.externalId() == null) return false;
+        return db.sql("""
+                SELECT EXISTS (SELECT 1 FROM job_source s JOIN job j ON j.id = s.job_id
+                                WHERE s.source_type = ? AND s.tenant IS NOT DISTINCT FROM ?
+                                  AND s.external_id = ? AND j.description_text IS NOT NULL)
+                """)
+                .params(raw.sourceType().name(), raw.tenant(), raw.externalId())
+                .query(Boolean.class).single();
+    }
+
     public Result upsert(long companyId, RawJob raw) {
         if (raw.url() == null || raw.title() == null) {
             throw new IllegalArgumentException("a job needs at least a url and a title");
@@ -157,6 +173,16 @@ public class JobUpsertService {
           .update();
         db.sql("UPDATE job SET last_seen_at = now(), updated_at = now() WHERE id = ?")
           .param(jobId).update();
+        // A job first stored without its text (a board scan ran out of detail budget) gets
+        // it the next time it is seen with one. Existing text is never overwritten here.
+        String description = raw.descriptionText();
+        if (description != null && !description.isBlank()) {
+            db.sql("""
+                   UPDATE job SET description_text = ?, description_hash = ?
+                    WHERE id = ? AND description_text IS NULL
+                   """)
+              .params(description, normalizer.sha256(description), jobId).update();
+        }
     }
 
     private void touch(long jobId, ParsedJobUrl url, RawJob raw) {

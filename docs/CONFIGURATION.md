@@ -42,7 +42,9 @@ backslash twice inside double quotes: `"\\bjava\\b"`.
 | Key | Default | Meaning |
 |---|---|---|
 | `jobradar.ba.queries` | four software searches | Search words for the Bundesagentur für Arbeit. Keep the list short; it matches loosely. |
-| `jobradar.ba.max-detail-fetches` | `250` | Upper bound on description fetches per scan. |
+| `jobradar.ba.max-detail-fetches` | `250` | Upper bound on description fetches per scan. Jobs already stored with a description are skipped and do not count. |
+| `jobradar.ba.published-within-days` | `28` | Read every page of postings published in this window (1-100 days), not just the first page by relevance. |
+| `jobradar.ba.max-pages` | `10` | Pages per query, 100 results each. |
 | `jobradar.stepstone.keywords` | four software slugs | Slugs as in `stepstone.de/jobs/<slug>`. One page (25 postings) per keyword. |
 | `jobradar.stepstone.max-detail-fetches` | `120` | Upper bound on description fetches per scan. |
 | `jobradar.detect.per-scan` | `30` | Companies probed for an ATS before each full scan. |

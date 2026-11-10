@@ -56,6 +56,10 @@ jobradar:
       - "Backend Entwickler"
       - "Frontend Entwickler"
     max-detail-fetches: 250
+    # Read every page of postings published in this many days (1-100), not just the
+    # first page by relevance. Jobs already stored are never fetched again.
+    published-within-days: 28
+    max-pages: 10                  # per query, 100 results a page
   stepstone:
     # One page (25 postings) per keyword - robots.txt disallows ?page=, so breadth comes
     # from specific keywords, not from paging. Slugs as in stepstone.de/jobs/<slug>.

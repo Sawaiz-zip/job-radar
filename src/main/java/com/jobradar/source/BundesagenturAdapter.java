@@ -32,12 +32,14 @@ public class BundesagenturAdapter extends AbstractHttpAdapter implements BoardAd
 
     private static final String SEARCH =
             "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs"
-          + "?was=%s&wo=Deutschland&size=%d&page=1&zeitarbeit=false&angebotsart=1";
+          + "?was=%s&wo=Deutschland&size=%d&page=%d&zeitarbeit=false&angebotsart=1"
+          + "&veroeffentlichtseit=%d";
     private static final String DETAIL =
             "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobdetails/%s";
     private static final String PUBLIC_KEY = "jobboerse-jobsuche";
 
-    private static final int PER_QUERY = 50;
+    /** Results per page; the API accepts up to 100. */
+    private static final int PAGE_SIZE = 100;
 
     /**
      * BA matches loosely, so every extra query multiplies the noise. A short, specific list
@@ -46,18 +48,26 @@ public class BundesagenturAdapter extends AbstractHttpAdapter implements BoardAd
      */
     private final List<String> queries;
     private final int maxDetailFetches;
+    private final int publishedWithinDays;
+    private final int maxPages;
 
     public BundesagenturAdapter(RestClient http, RateLimiter rateLimiter,
                                 @org.springframework.beans.factory.annotation.Value(
                                         "${jobradar.ba.queries:}") List<String> configuredQueries,
                                 @org.springframework.beans.factory.annotation.Value(
-                                        "${jobradar.ba.max-detail-fetches:250}") int maxDetailFetches) {
+                                        "${jobradar.ba.max-detail-fetches:250}") int maxDetailFetches,
+                                @org.springframework.beans.factory.annotation.Value(
+                                        "${jobradar.ba.published-within-days:28}") int publishedWithinDays,
+                                @org.springframework.beans.factory.annotation.Value(
+                                        "${jobradar.ba.max-pages:10}") int maxPages) {
         super(http, rateLimiter);
         this.queries = configuredQueries == null || configuredQueries.isEmpty()
                 ? List.of("Java Entwickler", "Softwareentwickler Java", "Backend Entwickler",
                           "Software Engineer", "AI Engineer")
                 : configuredQueries;
         this.maxDetailFetches = maxDetailFetches;
+        this.publishedWithinDays = Math.max(1, Math.min(publishedWithinDays, 100));
+        this.maxPages = Math.max(1, maxPages);
     }
 
     @Override
@@ -81,30 +91,40 @@ public class BundesagenturAdapter extends AbstractHttpAdapter implements BoardAd
         Set<String> seenRefs = new LinkedHashSet<>();
         String lastError = null;
 
+        // Every page of what was published recently, rather than the first 50 by relevance:
+        // measured on 2026-11-10, the six default queries had 2,900 results and the old
+        // single page read 300 of them, chosen by relevance, so most new postings never
+        // arrived. A recent window keeps the volume small while missing nothing new.
         for (String query : queries) {
-            String url = SEARCH.formatted(URLEncoder.encode(query, StandardCharsets.UTF_8), PER_QUERY);
-            FetchResult page = callWithKey(url, root -> {
-                List<RawJob> jobs = new ArrayList<>();
-                for (JsonNode j : root.path("ergebnisliste")) {
-                    String ref = j.path("referenznummer").asText(null);
-                    if (ref == null || !seenRefs.add(ref)) continue;
-                    jobs.add(new RawJob(
-                            type(), null, ref,
-                            j.path("stellenangebotsTitel").asText(null),
-                            location(j),
-                            null,                       // filled in below, only if the title passes
-                            jobUrl(j, ref),
-                            j.path("firma").asText(null),
-                            publishedAt(j),
-                            null));
+            for (int page = 1; page <= maxPages; page++) {
+                String url = SEARCH.formatted(URLEncoder.encode(query, StandardCharsets.UTF_8),
+                        PAGE_SIZE, page, publishedWithinDays);
+                int[] total = {0};
+                FetchResult result = callWithKey(url, root -> {
+                    total[0] = root.path("maxErgebnisse").asInt(0);
+                    List<RawJob> jobs = new ArrayList<>();
+                    for (JsonNode j : root.path("ergebnisliste")) {
+                        String ref = j.path("referenznummer").asText(null);
+                        if (ref == null || !seenRefs.add(ref)) continue;
+                        jobs.add(new RawJob(
+                                type(), null, ref,
+                                j.path("stellenangebotsTitel").asText(null),
+                                location(j),
+                                null,                       // filled in later, only if the title passes
+                                jobUrl(j, ref),
+                                j.path("firma").asText(null),
+                                publishedAt(j),
+                                null));
+                    }
+                    return FetchResult.ok(jobs, 200);
+                });
+                if (result.isError()) {
+                    lastError = result.error();
+                    break;
                 }
-                return FetchResult.ok(jobs, 200);
-            });
-            if (page.isError()) {
-                lastError = page.error();
-                continue;
+                out.addAll(result.jobs());
+                if (page * PAGE_SIZE >= total[0]) break;
             }
-            out.addAll(page.jobs());
         }
 
         if (out.isEmpty() && lastError != null) return FetchResult.failed(lastError, null);

@@ -163,7 +163,7 @@ public class ScanService {
 
                 var job = raw;
                 if (detailsStopped == null && job.descriptionText() == null
-                        && detailFetches < board.maxDetailFetches()) {
+                        && detailFetches < board.maxDetailFetches() && !upsert.hasDescription(job)) {
                     String description = board.fetchDescription(job);
                     detailFetches++;
                     failedInARow = description == null ? failedInARow + 1 : 0;
@@ -183,8 +183,10 @@ public class ScanService {
                         job = new com.jobradar.source.RawJob(job.sourceType(), job.tenant(),
                                 job.externalId(), job.title(), job.location(), description,
                                 job.url(), job.companyName(), job.postedAt(), job.rawPayload());
-                        // Now that the text is known, the language and experience rules apply.
-                        if (!filters.evaluate(job.title(), description).keep()) continue;
+                        // Stored even when the language or experience rules will drop it: the
+                        // scoring pass marks it FILTERED (hidden, with its reason, behind
+                        // Stretch roles). Skipping it here left a job already stored without
+                        // text visible for good, since its text never arrived.
                     }
                 }
 
