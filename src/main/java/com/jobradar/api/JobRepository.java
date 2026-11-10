@@ -11,6 +11,10 @@ import java.util.List;
 @Repository
 public class JobRepository {
 
+    /** Upper bound on one page of the job list. */
+    static final int MAX_PAGE = 5000;
+
+
     private final JdbcClient db;
 
     public JobRepository(JdbcClient db) {
@@ -71,7 +75,8 @@ public class JobRepository {
         // reads as the list "jumping" when nothing changed.
         sql.append(", j.id DESC LIMIT ?");
         List<Object> pageParams = new ArrayList<>(params);
-        pageParams.add(Math.max(1, Math.min(f.limit(), 1000)));
+        // The UI loads more as you scroll; 5,000 rows without descriptions is ~2 MB, fine locally.
+        pageParams.add(Math.max(1, Math.min(f.limit(), MAX_PAGE)));
 
         List<JobView> rows = db.sql(sql.toString()).params(pageParams).query(JobRepository::mapJob).list();
         return new Page(rows, total);
@@ -119,9 +124,9 @@ public class JobRepository {
             }
         }
         if (f.postedWithinHours() != null && f.postedWithinHours() > 0) {
-            // Only jobs whose source actually reported a date; a missing date is not "old".
-            sql.append(" AND j.posted_at IS NOT NULL"
-                     + " AND j.posted_at > now() - make_interval(hours => ?)");
+            // The same date the job card shows: the reported posting date, or when Job Radar
+            // first saw the job if the source reports none. A missing date is not "old".
+            sql.append(" AND COALESCE(j.posted_at, j.first_seen_at) > now() - make_interval(hours => ?)");
             params.add(f.postedWithinHours());
         }
         if (!f.includeDismissed()) {

@@ -130,11 +130,18 @@
     </div>
 
     <div class="row">
-      <div class="seg" role="group" aria-label="First seen">
+      <span class="seglabel">Posted</span>
+      <div class="seg" role="group" aria-label="Posted">
+        <button *ngFor="let o of postedOptions" [class.on]="filters().posted === o.key"
+                (click)="setFilter('posted', o.key)" [title]="o.title">{{ o.label }}</button>
+      </div>
+      <span class="seglabel">Found</span>
+      <div class="seg" role="group" aria-label="Found by Job Radar">
         <button *ngFor="let o of freshnessOptions" [class.on]="filters().freshness === o.key"
                 (click)="setFilter('freshness', o.key)" [title]="o.title">
           {{ o.label }}
-          <span class="chipcount" *ngIf="o.key === 'scan' && lastScanInfo()?.new_in_germany">{{ lastScanInfo().new_in_germany }}</span>
+          <span class="chipcount" *ngIf="o.key === 'scan' && lastScanInfo()?.new_in_germany"
+                title="New jobs in Germany before your tags and filters">{{ lastScanInfo().new_in_germany }}</span>
         </button>
       </div>
 
@@ -313,7 +320,7 @@
 
   <div class="loadmore" *ngIf="total() > jobs().length">
     <button class="btn" (click)="loadMore()" [disabled]="loading()">
-      Show {{ (total() - jobs().length) < 100 ? (total() - jobs().length) : 100 }} more
+      {{ loading() ? 'Loading…' : 'Show ' + ((total() - jobs().length) < 200 ? (total() - jobs().length) : 200) + ' more' }}
     </button>
   </div>
 </main>

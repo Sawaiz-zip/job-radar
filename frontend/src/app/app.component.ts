@@ -1,4 +1,4 @@
-import { Component, DestroyRef, OnInit, signal, computed, inject } from '@angular/core';
+import { Component, DestroyRef, HostListener, OnInit, signal, computed, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Observable, Subject, catchError, concatMap, of, switchMap, tap, timer } from 'rxjs';
 import { CommonModule } from '@angular/common';
@@ -9,6 +9,7 @@ type Tab = 'jobs' | 'applied' | 'companies' | 'confirm' | 'sources';
 
 type Sort = 'date' | 'chance' | 'fit' | 'company';
 type Freshness = '' | 'scan' | '24' | '72' | '168';
+type Posted = '' | '24' | '72' | '168' | '720';
 
 /**
  * Every control of the jobs view, in one value. It used to be six separate signals each
@@ -28,6 +29,7 @@ export interface Filters {
   germanyOnly: boolean;
   includeFiltered: boolean;
   freshness: Freshness;
+  posted: Posted;
   sort: Sort;
 }
 
@@ -44,17 +46,29 @@ const DEFAULT_FILTERS: Filters = {
   germanyOnly: true,
   includeFiltered: false,
   freshness: '',
+  posted: '',
   // Chance first: the whole point is where an application is actually worth writing.
   sort: 'chance',
 };
 
-const FILTERS_KEY = 'jobradar.filters.v2';
-const PAGE = 100;
+const FILTERS_KEY = 'jobradar.filters.v3';
+const OLD_FILTERS_KEY = 'jobradar.filters.v2';
+const PAGE = 200;
 
 function loadSavedFilters(): Filters {
   try {
     const raw = localStorage.getItem(FILTERS_KEY);
-    return raw ? { ...DEFAULT_FILTERS, ...JSON.parse(raw) } : { ...DEFAULT_FILTERS };
+    if (raw) return { ...DEFAULT_FILTERS, ...JSON.parse(raw) };
+    // v2 had one date filter that read as "posted" but measured "first seen". Carry an
+    // hour window over to the new posted filter, which is what it looked like it did.
+    const old = localStorage.getItem(OLD_FILTERS_KEY);
+    if (!old) return { ...DEFAULT_FILTERS };
+    const f = { ...DEFAULT_FILTERS, ...JSON.parse(old) } as Filters;
+    if (f.freshness && f.freshness !== 'scan') {
+      f.posted = f.freshness as Posted;
+      f.freshness = '';
+    }
+    return f;
   } catch {
     return { ...DEFAULT_FILTERS };
   }
@@ -105,15 +119,22 @@ export class AppComponent implements OnInit {
     { key: 'company', label: 'Company' },
   ];
 
-  // Freshness is measured on when WE first saw a job, not on the employer's posting date:
-  // that date is missing or stale on most German postings, so filtering by it hides jobs
-  // that are genuinely new to us.
+  // Two different questions, so two separate filters. "Posted" is the date printed on each
+  // card (the employer's date, or first seen when the source gives none). "Found" is when
+  // Job Radar first saw the job: an old posting at a newly detected company is found today
+  // but was posted months ago, which is why one filter cannot answer both.
+  readonly postedOptions: { key: Posted; label: string; title: string }[] = [
+    { key: '', label: 'Any time', title: 'No posting-date limit' },
+    { key: '24', label: '24h', title: 'Posted in the last 24 hours' },
+    { key: '72', label: '3 days', title: 'Posted in the last 3 days' },
+    { key: '168', label: '1 week', title: 'Posted in the last week' },
+    { key: '720', label: '1 month', title: 'Posted in the last 30 days' },
+  ];
   readonly freshnessOptions: { key: Freshness; label: string; title: string }[] = [
-    { key: '', label: 'Any time', title: 'No date limit' },
-    { key: 'scan', label: 'Last scan', title: 'Only what the last scan brought in' },
-    { key: '24', label: '24h', title: 'First seen in the last 24 hours' },
-    { key: '72', label: '3 days', title: 'First seen in the last 3 days' },
-    { key: '168', label: '1 week', title: 'First seen in the last week' },
+    { key: '', label: 'Any', title: 'No limit on when Job Radar found it' },
+    { key: 'scan', label: 'Last scan', title: 'Only jobs the last scan found for the first time' },
+    { key: '24', label: '24h', title: 'Found by Job Radar in the last 24 hours' },
+    { key: '168', label: '1 week', title: 'Found by Job Radar in the last week' },
   ];
 
   /** The filters that differ from the defaults, each with a way to undo just that one. */
@@ -131,7 +152,8 @@ export class AppComponent implements OnInit {
     if (f.hideApplied) out.push({ key: 'hideApplied', label: 'not applied' });
     if (!f.germanyOnly) out.push({ key: 'germanyOnly', label: 'outside Germany too' });
     if (f.includeFiltered) out.push({ key: 'includeFiltered', label: 'with stretch roles' });
-    if (f.freshness) out.push({ key: 'freshness', label: this.freshnessOptions.find((o) => o.key === f.freshness)!.label });
+    if (f.posted) out.push({ key: 'posted', label: 'posted ' + this.postedOptions.find((o) => o.key === f.posted)!.label });
+    if (f.freshness) out.push({ key: 'freshness', label: 'found ' + (this.freshnessOptions.find((o) => o.key === f.freshness)?.label ?? f.freshness) });
     return out;
   });
 
@@ -308,8 +330,17 @@ export class AppComponent implements OnInit {
   }
 
   loadMore(): void {
+    if (this.loading() || this.total() <= this.jobs().length) return;
     this.limit.update((l) => l + PAGE);
     this.reload$.next(0);
+  }
+
+  /** Load the next page on its own when the list is scrolled near its end. */
+  @HostListener('window:scroll')
+  onScroll(): void {
+    if (this.tab() !== 'jobs') return;
+    const nearBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 800;
+    if (nearBottom) this.loadMore();
   }
 
   private jobParams(): Record<string, any> {
@@ -324,6 +355,7 @@ export class AppComponent implements OnInit {
     };
     if (company) params['companyId'] = company.id;
     if (f.freshness) params['freshness'] = f.freshness;
+    if (f.posted) params['postedWithinHours'] = f.posted;
     if (f.text.trim()) params['text'] = f.text.trim();
     if (f.city.trim()) params['city'] = f.city.trim();
     if (f.remoteOnly) params['remoteOnly'] = true;
